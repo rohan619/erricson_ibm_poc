@@ -3,8 +3,6 @@ name: CI - Tests, SonarQube, Fortify
 on:
   push:
     branches: [ main ]
-  pull_request:
-    branches: [ main ]
 
 jobs:
   test:
@@ -25,12 +23,6 @@ jobs:
       - name: Run tests
         run: |
           pytest -q
-
-      # Gemini Code Assist step
-      - name: Run Gemini Code Assist
-        uses: google-github-actions/run-gemini-cli@v0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
 
 
   sonar:
