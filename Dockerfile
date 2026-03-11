@@ -4,6 +4,7 @@ FROM python:3.10-slim
 WORKDIR /app
 # Testing
 # Copy requirements    testing
+# newwwww
 COPY requirements.txt .
 
 # Install dependencies
