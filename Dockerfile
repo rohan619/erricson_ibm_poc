@@ -3,7 +3,8 @@ FROM python:3.10-slim
 # Set working directory
 WORKDIR /app
 # Testing
-# Copy requirements
+# Copy requirements    testing
+# newwwww
 COPY requirements.txt .
 
 # Install dependencies
