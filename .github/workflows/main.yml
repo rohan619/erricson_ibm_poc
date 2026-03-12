@@ -51,7 +51,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    outputs: # 👈 ADD THIS: Makes the digest available to other jobs
+    outputs: # 👈 This exports the variable to the next job
       image_digest: ${{ steps.get_digest.outputs.DIGEST }}
     steps:
       - uses: actions/checkout@v4
@@ -84,17 +84,19 @@ jobs:
           if [[ "$STATUS" != "SUCCESS" ]]; then exit 1; fi
 
       - name: Get image digest
-        id: get_digest # 👈 ADD THIS ID
+        id: get_digest # 👈 Step ID is required for outputs
         run: |
           DIGEST=$(gcloud artifacts docker images list \
           ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image \
           --format="value(DIGEST)" \
           --filter="tags:${{ github.sha }}" | head -n 1)
-          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT # 👈 SAVE TO OUTPUT
+          
+          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT # 👈 Correct way to pass variables
+          echo "Found digest: $DIGEST"
 
-  sign-image: # 👈 NEW JOB
+  sign-image:
     runs-on: ubuntu-latest
-    needs: build-image
+    needs: build-image # 👈 Ensures this runs AFTER build-image
     permissions:
       contents: read
       id-token: write
@@ -113,6 +115,7 @@ jobs:
 
       - name: Sign and Create Attestation
         run: |
+          # We use needs.build-image.outputs.image_digest to grab the value from the previous job
           gcloud beta container binauthz attestations sign-and-create \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
             --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ needs.build-image.outputs.image_digest }}" \
