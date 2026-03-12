@@ -9,31 +9,28 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
       - name: Run tests
-        run: pytest -q
+        run: |
+          pytest -q
 
   sonar:
     runs-on: ubuntu-latest
     needs: test
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -45,62 +42,58 @@ jobs:
   fortify:
     runs-on: ubuntu-latest
     needs: test
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Prepare Fortify
-        run: chmod +x ./fortify_scan.sh
+        run: |
+          chmod +x ./fortify_scan.sh
 
-      - name: Run Fortify
+      - name: Run Fortify SCA
         env:
           FORTIFY_SCA_IMAGE: ${{ secrets.FORTIFY_SCA_IMAGE }}
-        run: ./fortify_scan.sh
+        run: |
+          ./fortify_scan.sh
 
   build-image:
     runs-on: ubuntu-latest
-    needs:
-      - sonar
-      - fortify
+    needs: [sonar, fortify]
 
     permissions:
       contents: read
       id-token: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Authenticate to GCP
-        id: auth
+      - id: auth
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      - name: Setup gcloud
+      - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Set project
+      - name: Set GCP project
         run: gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
 
       - name: Start Cloud Build
         run: |
           BUILD_ID=$(gcloud builds submit \
-          --async \
-          --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }} \
-          --format="value(id)")
+            --async \
+            --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }} \
+            --format="value(id)")
 
           echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
 
-      - name: Wait for build
+      - name: Wait for Cloud Build completion
         run: |
           STATUS="WORKING"
 
           while [[ "$STATUS" == "WORKING" || "$STATUS" == "QUEUED" ]]; do
             STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
-            echo "Build status: $STATUS"
+            echo "Current build status: $STATUS"
             sleep 10
           done
 
@@ -108,3 +101,40 @@ jobs:
             echo "Cloud Build failed"
             exit 1
           fi
+
+      - name: Get image digest
+        run: |
+          DIGEST=$(gcloud artifacts docker images list \
+          ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }} \
+          --include-tags \
+          --format="value(DIGEST)" \
+          --filter="tags:${{ github.sha }}" | head -n 1)
+
+          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
+          echo "Image digest: $DIGEST"
+
+      - name: Install gcloud beta
+        run: |
+          gcloud components install beta --quiet
+
+      - name: Create private key file
+        run: |
+          echo "${{ secrets.BINAUTHZ_PRIVATE_KEY }}" > binauthz-private-key.pem
+
+      - name: Create Binary Authorization payload
+        run: |
+          gcloud container binauthz create-signature-payload \
+          --artifact-url=${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }} \
+          > payload.json
+
+      - name: Sign payload
+        run: |
+          openssl dgst -sha256 -sign binauthz-private-key.pem payload.json > signature.bin
+
+      - name: Create Binary Authorization attestation
+        run: |
+          gcloud container binauthz attestations create \
+          --artifact-url=${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }} \
+          --attestor=my-attestor \
+          --signature-file=signature.bin \
+          --payload-file=payload.json
