@@ -85,5 +85,5 @@ jobs:
       # Submit build to Cloud Build
       - name: Build Docker Image with Cloud Build
         run: |
-          gcloud builds submit \
+          gcloud builds submit --async \
           --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }}
