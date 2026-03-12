@@ -136,5 +136,6 @@ jobs:
           gcloud container binauthz attestations create \
           --artifact-url=${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }} \
           --attestor=my-attestor \
+          --public-key-id=${{ secrets.BINAUTHZ_KEY_ID }} \
           --signature-file=signature.bin \
           --payload-file=payload.json
