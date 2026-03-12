@@ -6,7 +6,6 @@ on:
       - main
 
 jobs:
-
   test:
     runs-on: ubuntu-latest
     steps:
@@ -58,11 +57,9 @@ jobs:
   build-image:
     runs-on: ubuntu-latest
     needs: [sonar, fortify]
-
     permissions:
       contents: read
       id-token: write
-
     steps:
       - uses: actions/checkout@v4
 
@@ -84,19 +81,16 @@ jobs:
             --async \
             --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }} \
             --format="value(id)")
-
           echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
 
       - name: Wait for Cloud Build completion
         run: |
           STATUS="WORKING"
-
           while [[ "$STATUS" == "WORKING" || "$STATUS" == "QUEUED" ]]; do
             STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
             echo "Current build status: $STATUS"
             sleep 10
           done
-
           if [[ "$STATUS" != "SUCCESS" ]]; then
             echo "Cloud Build failed"
             exit 1
@@ -109,7 +103,6 @@ jobs:
           --include-tags \
           --format="value(DIGEST)" \
           --filter="tags:${{ github.sha }}" | head -n 1)
-
           echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
           echo "Image digest: $DIGEST"
 
@@ -120,11 +113,12 @@ jobs:
       - name: Create private key file
         run: |
           echo "${{ secrets.BINAUTHZ_PRIVATE_KEY }}" > binauthz-private-key.pem
+          chmod 600 binauthz-private-key.pem
 
       - name: Create Binary Authorization payload
         run: |
           gcloud container binauthz create-signature-payload \
-          --artifact-url=${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }} \
+          --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}" \
           > payload.json
 
       - name: Sign payload
@@ -132,11 +126,10 @@ jobs:
           openssl dgst -sha256 -sign binauthz-private-key.pem payload.json > signature.bin
 
       - name: Create Binary Authorization attestation
-        run: |
-        # We use quotes around variables to prevent the shell from breaking
-          gcloud container binauthz attestations create \
-            --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}" \
-            --attestor="my-attestor" \
-            --public-key-id="${{ secrets.BINAUTHZ_KEY_ID }}" \
-            --signature-file="signature.bin" \
-            --payload-file="payload.json"
+        run: >
+          gcloud container binauthz attestations create
+          --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}"
+          --attestor="my-attestor"
+          --public-key-id="${{ secrets.BINAUTHZ_KEY_ID }}"
+          --signature-file="signature.bin"
+          --payload-file="payload.json"
