@@ -96,9 +96,20 @@ jobs:
         run: |
           echo "${{ secrets.BINAUTHZ_PRIVATE_KEY }}" > binauthz-private-key.pem
 
-      - name: Sign image
+      - name: Create Binary Authorization payload
         run: |
-          gcloud beta container binauthz attestations sign-and-create \
+          gcloud container binauthz create-signature-payload \
+          --artifact-url=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-docker-repo/app-image:${{ github.sha }} \
+          > payload.json
+      
+      - name: Sign payload
+        run: |
+          openssl dgst -sha256 -sign binauthz-private-key.pem payload.json > signature.bin
+
+      - name: Create Binary Authorization attestation
+        run: |
+          gcloud container binauthz attestations create \
           --artifact-url=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-docker-repo/app-image:${{ github.sha }} \
           --attestor=my-attestor \
-          --private-key-file=binauthz-private-key.pem
+          --signature-file=signature.bin \
+          --payload-file=payload.json
