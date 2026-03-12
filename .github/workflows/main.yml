@@ -106,34 +106,34 @@ jobs:
           echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
           echo "Image digest: $DIGEST"
 
-      - name: Install gcloud beta
-        run: |
-          gcloud components install beta --quiet
+      # - name: Install gcloud beta
+      #   run: |
+      #     gcloud components install beta --quiet
 
-      - name: Create private key file
-        run: |
-          echo "${{ secrets.BINAUTHZ_PRIVATE_KEY }}" > binauthz-private-key.pem
-          chmod 600 binauthz-private-key.pem
+      # - name: Create private key file
+      #   run: |
+      #     echo "${{ secrets.BINAUTHZ_PRIVATE_KEY }}" > binauthz-private-key.pem
+      #     chmod 600 binauthz-private-key.pem
 
-      - name: Create Binary Authorization payload
-        run: |
-          gcloud container binauthz create-signature-payload \
-          --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}" \
-          > payload.json
+      # - name: Create Binary Authorization payload
+      #   run: |
+      #     gcloud container binauthz create-signature-payload \
+      #     --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}" \
+      #     > payload.json
 
-      - name: Sign payload
-        run: |
-          openssl dgst -sha256 -sign binauthz-private-key.pem payload.json > signature.bin
+      # - name: Sign payload
+      #   run: |
+      #     openssl dgst -sha256 -sign binauthz-private-key.pem payload.json > signature.bin
 
-      - name: Create Binary Authorization attestation
-        run: >
-          gcloud container binauthz attestations create
-          --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}"
-          --attestor="my-attestor"
-          --attestor-project="${{ secrets.GCP_PROJECT_ID }}"
-          --project="${{ secrets.GCP_PROJECT_ID }}"
-          --keyversion-project="${{ secrets.GCP_PROJECT_ID }}"
-          --keyversion-location="global"
-          --keyversion-keyring="mytestring"
-          --keyversion-key="asymmetric-key"
-          --keyversion="1"
+      # - name: Create Binary Authorization attestation
+      #   run: >
+      #     gcloud container binauthz attestations create
+      #     --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}"
+      #     --attestor="my-attestor"
+      #     --attestor-project="${{ secrets.GCP_PROJECT_ID }}"
+      #     --project="${{ secrets.GCP_PROJECT_ID }}"
+      #     --keyversion-project="${{ secrets.GCP_PROJECT_ID }}"
+      #     --keyversion-location="global"
+      #     --keyversion-keyring="mytestring"
+      #     --keyversion-key="asymmetric-key"
+      #     --keyversion="1"
