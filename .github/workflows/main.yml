@@ -88,6 +88,14 @@ jobs:
           gcloud builds submit --async \
           --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }}
       
+      - name: Get image digest
+        run: |
+          DIGEST=$(gcloud artifacts docker images describe \
+          us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-docker-repo/app-image:${{ github.sha }} \
+          --format='value(image_summary.digest)')
+    
+          echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
+
       - name: Install gcloud beta
         run: |
           gcloud components install beta --quiet
@@ -99,7 +107,7 @@ jobs:
       - name: Create Binary Authorization payload
         run: |
           gcloud container binauthz create-signature-payload \
-          --artifact-url=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-docker-repo/app-image:${{ github.sha }} \
+          --artifact-url=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-docker-repo/app-image@${{ env.IMAGE_DIGEST }} \
           > payload.json
       
       - name: Sign payload
