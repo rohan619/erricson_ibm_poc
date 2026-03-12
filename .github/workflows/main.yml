@@ -127,9 +127,12 @@ jobs:
 
       - name: Create Binary Authorization attestation
         run: >
-          gcloud container binauthz attestations create
+          gcloud beta container binauthz attestations create
           --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}"
           --attestor="my-attestor"
-          --public-key-id="${{ secrets.BINAUTHZ_KEY_ID }}"
-          --signature-file="signature.bin"
-          --payload-file="payload.json"
+          --attestor-project="${{ secrets.GCP_PROJECT_ID }}"
+          --keyversion-project="${{ secrets.GCP_PROJECT_ID }}"
+          --keyversion-location="global"
+          --keyversion-keyring="mytestring"
+          --keyversion-key="asymmetric-key"
+          --keyversion="1"
