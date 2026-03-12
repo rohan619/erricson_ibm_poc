@@ -51,7 +51,7 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    outputs: # 👈 This exports the variable to the next job
+    outputs:
       image_digest: ${{ steps.get_digest.outputs.DIGEST }}
     steps:
       - uses: actions/checkout@v4
@@ -84,19 +84,28 @@ jobs:
           if [[ "$STATUS" != "SUCCESS" ]]; then exit 1; fi
 
       - name: Get image digest
-        id: get_digest # 👈 Step ID is required for outputs
+        id: get_digest
         run: |
-          DIGEST=$(gcloud artifacts docker images list \
-          ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image \
-          --format="value(DIGEST)" \
-          --filter="tags:${{ github.sha }}" | head -n 1)
+          # Give Artifact Registry a moment to index the new image
+          sleep 5
           
-          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT # 👈 Correct way to pass variables
-          echo "Found digest: $DIGEST"
+          # Fetch the digest and strip newlines/spaces
+          DIGEST=$(gcloud artifacts docker images list \
+            ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image \
+            --filter="tags:${{ github.sha }}" \
+            --format="value(DIGEST)" --limit=1 | tr -d '\n\r ')
+          
+          if [ -z "$DIGEST" ]; then
+            echo "ERROR: Could not find image digest for tag ${{ github.sha }}"
+            exit 1
+          fi
+          
+          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT
+          echo "IMAGE_DIGEST found: $DIGEST"
 
   sign-image:
     runs-on: ubuntu-latest
-    needs: build-image # 👈 Ensures this runs AFTER build-image
+    needs: build-image
     permissions:
       contents: read
       id-token: write
@@ -115,7 +124,6 @@ jobs:
 
       - name: Sign and Create Attestation
         run: |
-          # We use needs.build-image.outputs.image_digest to grab the value from the previous job
           gcloud beta container binauthz attestations sign-and-create \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
             --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ needs.build-image.outputs.image_digest }}" \
