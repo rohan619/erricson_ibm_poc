@@ -133,9 +133,10 @@ jobs:
 
       - name: Create Binary Authorization attestation
         run: |
+        # We use quotes around variables to prevent the shell from breaking
           gcloud container binauthz attestations create \
-          --artifact-url=${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }} \
-          --attestor=my-attestor \
-          --public-key-id=${{ secrets.BINAUTHZ_KEY_ID }} \
-          --signature-file=signature.bin \
-          --payload-file=payload.json
+            --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }}" \
+            --attestor="my-attestor" \
+            --public-key-id="${{ secrets.BINAUTHZ_KEY_ID }}" \
+            --signature-file="signature.bin" \
+            --payload-file="payload.json"
