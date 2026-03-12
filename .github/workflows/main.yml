@@ -1,153 +1,110 @@
 name: CI - Tests, SonarQube, Fortify
 
 on:
-push:
-branches: [ main ]
+  push:
+    branches:
+      - main
 
 jobs:
 
-test:
-runs-on: ubuntu-latest
-steps:
-- uses: actions/checkout@v4
+  test:
+    runs-on: ubuntu-latest
 
-```
-  - name: Set up Python
-    uses: actions/setup-python@v4
-    with:
-      python-version: '3.10'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  - name: Install deps
-    run: |
-      python -m pip install --upgrade pip
-      pip install -r requirements.txt
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
-  - name: Run tests
-    run: |
-      pytest -q
-```
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-sonar:
-runs-on: ubuntu-latest
-needs: test
-steps:
-- uses: actions/checkout@v4
-with:
-fetch-depth: 0
+      - name: Run tests
+        run: pytest -q
 
-```
-  - name: SonarCloud Scan
-    uses: SonarSource/sonarqube-scan-action@v2
-    env:
-      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-```
+  sonar:
+    runs-on: ubuntu-latest
+    needs: test
 
-fortify:
-runs-on: ubuntu-latest
-needs: test
-steps:
-- uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-```
-  - name: Prepare Fortify
-    run: |
-      chmod +x ./fortify_scan.sh
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-  - name: Run Fortify SCA
-    env:
-      FORTIFY_SCA_IMAGE: ${{ secrets.FORTIFY_SCA_IMAGE }}
-    run: |
-      ./fortify_scan.sh
-```
+  fortify:
+    runs-on: ubuntu-latest
+    needs: test
 
-build-image:
-runs-on: ubuntu-latest
-needs: [sonar, fortify]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-```
-permissions:
-  contents: read
-  id-token: write
+      - name: Prepare Fortify
+        run: chmod +x ./fortify_scan.sh
 
-steps:
-  - uses: actions/checkout@v4
+      - name: Run Fortify
+        env:
+          FORTIFY_SCA_IMAGE: ${{ secrets.FORTIFY_SCA_IMAGE }}
+        run: ./fortify_scan.sh
 
-  - id: auth
-    uses: google-github-actions/auth@v2
-    with:
-      workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-      service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+  build-image:
+    runs-on: ubuntu-latest
+    needs:
+      - sonar
+      - fortify
 
-  - name: Set up Cloud SDK
-    uses: google-github-actions/setup-gcloud@v2
+    permissions:
+      contents: read
+      id-token: write
 
-  - name: Set GCP project
-    run: gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  # Start Cloud Build asynchronously
-  - name: Start Cloud Build
-    run: |
-      BUILD_ID=$(gcloud builds submit \
-        --async \
-        --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }} \
-        --format="value(id)")
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-      echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
 
-  # Wait until Cloud Build finishes
-  - name: Wait for Cloud Build completion
-    run: |
-      STATUS="WORKING"
+      - name: Set project
+        run: gcloud config set project ${{ secrets.GCP_PROJECT_ID }}
 
-      while [[ "$STATUS" == "WORKING" || "$STATUS" == "QUEUED" ]]; do
-        STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
-        echo "Current build status: $STATUS"
-        sleep 10
-      done
+      - name: Start Cloud Build
+        run: |
+          BUILD_ID=$(gcloud builds submit \
+          --async \
+          --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }} \
+          --format="value(id)")
 
-      if [[ "$STATUS" != "SUCCESS" ]]; then
-        echo "Cloud Build failed"
-        exit 1
-      fi
+          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
 
-  # Get image digest
-  - name: Get image digest
-    run: |
-      DIGEST=$(gcloud artifacts docker images list \
-      ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }} \
-      --include-tags \
-      --format="value(DIGEST)" \
-      --filter="tags:${{ github.sha }}" | head -n 1)
+      - name: Wait for build
+        run: |
+          STATUS="WORKING"
 
-      echo "IMAGE_DIGEST=$DIGEST" >> $GITHUB_ENV
-      echo "Image digest: $DIGEST"
+          while [[ "$STATUS" == "WORKING" || "$STATUS" == "QUEUED" ]]; do
+            STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
+            echo "Build status: $STATUS"
+            sleep 10
+          done
 
-  - name: Install gcloud beta
-    run: |
-      gcloud components install beta --quiet
-
-  - name: Create private key file
-    run: |
-      echo "${{ secrets.BINAUTHZ_PRIVATE_KEY }}" > binauthz-private-key.pem
-
-  # Create Binary Authorization payload
-  - name: Create Binary Authorization payload
-    run: |
-      gcloud container binauthz create-signature-payload \
-      --artifact-url=${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }} \
-      > payload.json
-
-  # Sign payload
-  - name: Sign payload
-    run: |
-      openssl dgst -sha256 -sign binauthz-private-key.pem payload.json > signature.bin
-
-  # Upload attestation
-  - name: Create Binary Authorization attestation
-    run: |
-      gcloud container binauthz attestations create \
-      --artifact-url=${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ env.IMAGE_DIGEST }} \
-      --attestor=my-attestor \
-      --signature-file=signature.bin \
-      --payload-file=payload.json
-```
+          if [[ "$STATUS" != "SUCCESS" ]]; then
+            echo "Cloud Build failed"
+            exit 1
+          fi
