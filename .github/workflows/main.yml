@@ -87,3 +87,10 @@ jobs:
         run: |
           gcloud builds submit --async \
           --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }}
+
+      - name: Sign image for Binary Authorization
+        run: |
+          gcloud container binauthz attestations sign-and-create \
+          --artifact-url=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/my-docker-repo/app-image:${{ github.sha }} \
+          --attestor=my-attestor \
+          --private-key-file=binauthz-private-key.pem
