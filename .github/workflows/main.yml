@@ -86,17 +86,17 @@ jobs:
       - name: Get image digest
         id: get_digest
         run: |
-          # Give Artifact Registry time to index the push
-          sleep 15
+          # The exact image path and tag we just built
+          IMAGE_PATH="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }}"
           
-          # GRAB THE LATEST: We sort by creation time (descending) to get the image just built
-          DIGEST=$(gcloud artifacts docker images list \
-            ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image \
-            --sort-by="~CREATE_TIME" \
-            --format="value(DIGEST)" --limit=1 | tr -d '\n\r ')
+          echo "Fetching digest directly for exact tag: $IMAGE_PATH"
+          
+          # Use 'describe' instead of 'list' to target the exact tag. No sleep needed!
+          DIGEST=$(gcloud artifacts docker images describe $IMAGE_PATH \
+            --format="value(image_summary.digest)")
           
           if [ -z "$DIGEST" ]; then
-            echo "ERROR: Still cannot find any images in the repository!"
+            echo "ERROR: Cannot find the image digest for the pushed tag!"
             exit 1
           fi
           
