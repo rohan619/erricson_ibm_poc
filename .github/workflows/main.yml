@@ -7,7 +7,7 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: my-gke-runners
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python
@@ -22,7 +22,7 @@ jobs:
         run: pytest -q
 
   sonar:
-    runs-on: ubuntu-latest
+    runs-on: my-gke-runners
     needs: test
     steps:
       - uses: actions/checkout@v4
@@ -34,7 +34,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   fortify:
-    runs-on: ubuntu-latest
+    runs-on: my-gke-runners
     needs: test
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +46,7 @@ jobs:
         run: ./fortify_scan.sh
 
   build-image:
-    runs-on: ubuntu-latest
+    runs-on: my-gke-runners
     needs: [sonar, fortify]
     permissions:
       contents: read
@@ -104,7 +104,7 @@ jobs:
           echo "Final IMAGE_DIGEST found: $DIGEST"
 
   sign-image:
-    runs-on: ubuntu-latest
+    runs-on: my-gke-runners
     needs: build-image
     permissions:
       contents: read
