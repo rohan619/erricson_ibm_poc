@@ -145,12 +145,12 @@ jobs:
         with:
           repository: 'rohan619/erricson_ibm_app_repo' # Change this to your Repo 2 name!
           token: ${{ secrets.GITOPS_PAT }}
-          path: 'gitops-repo'
+          path: 'app-repo'
 
       # 2. Find and Replace the image digest, then commit and push!
       - name: Update Image Tag and Push
         run: |
-          cd gitops-repo/staging
+          cd app-repo
           
           # The exact image string we built earlier
           NEW_IMAGE="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ needs.build-image.outputs.image_digest }}"
