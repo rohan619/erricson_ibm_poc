@@ -134,3 +134,35 @@ jobs:
             --keyversion-keyring="mytestring" \
             --keyversion-key="asymmetric-key" \
             --keyversion="1"
+
+  update-gitops-repo:
+    runs-on: my-gke-runners
+    needs: [build-image, sign-image]
+    steps:
+      # 1. Checkout the SECOND repository (Your GitOps Repo)
+      - name: Checkout GitOps Repo
+        uses: actions/checkout@v4
+        with:
+          repository: 'rohan619/erricson_ibm_app_repo' # Change this to your Repo 2 name!
+          token: ${{ secrets.GITOPS_PAT }}
+          path: 'gitops-repo'
+
+      # 2. Find and Replace the image digest, then commit and push!
+      - name: Update Image Tag and Push
+        run: |
+          cd gitops-repo/staging
+          
+          # The exact image string we built earlier
+          NEW_IMAGE="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ needs.build-image.outputs.image_digest }}"
+          
+          # Use sed to find the old image line and replace it with the new one
+          sed -i "s|image: .*|image: $NEW_IMAGE|g" deployment.yaml
+          
+          # Configure Git and push the commit back to GitHub
+          git config user.name "GitHub Actions Bot 🤖"
+          git config user.email "actions@github.com"
+          git add deployment.yaml
+          git commit -m "Auto-update staging image to commit ${{ github.sha }}"
+          git push origin main
+
+
