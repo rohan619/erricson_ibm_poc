@@ -19,7 +19,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest
           pip install -r requirements.txt
-      - name: Run tests
+      - name: Run Tests
+        env:
+          PYTHONPATH: . # This dot means "Look in the current root folder!"
         run: pytest -q
 
   sonar:
