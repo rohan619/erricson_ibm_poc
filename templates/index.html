@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Cloud App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .card {
+            background-color: #1e1e1e;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+            text-align: center;
+            border-top: 4px solid #4285f4; /* Google Blue */
+        }
+        h1 { color: #4285f4; margin-bottom: 10px; }
+        .pod-name {
+            background-color: #2d2d2d;
+            padding: 10px 20px;
+            border-radius: 6px;
+            font-family: monospace;
+            color: #34a853; /* Google Green */
+            font-size: 1.2em;
+            margin-top: 20px;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>🚀 Deployment Successful!</h1>
+        <p>Your CI/CD pipeline is running perfectly on Google Kubernetes Engine.</p>
+        <p>Currently serving traffic from pod:</p>
+        <div class="pod-name">{{ pod_name }}</div>
+    </div>
+</body>
+</html>

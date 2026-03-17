@@ -1,20 +1,21 @@
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from flask import Flask, render_template
+import os
+import socket
 
-def greet(name="world"):
-    return f"Hello, {name}!"
+app = Flask(__name__)
 
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        message = greet()
-        self.send_response(200)
-        self.send_header("Content-type", "text/plain")
-        self.end_headers()
-        self.wfile.write(message.encode())
+@app.route('/')
+def home():
+    # Inside GKE, the hostname is the Pod's name!
+    pod_name = socket.gethostname()
+    
+    return render_template('index.html', pod_name=pod_name)
 
-def run():
-    server = HTTPServer(("0.0.0.0", 8000), Handler)
-    print("Server running on port 8000...")
-    server.serve_forever()
+# A health check endpoint - Gemini Cloud Assist and GKE love this for monitoring!
+@app.route('/health')
+def health_check():
+    return {"status": "healthy", "pod": socket.gethostname()}, 200
 
-if __name__ == "__main__":
-    run()
+if __name__ == '__main__':
+    # Gunicorn will actually handle the serving in production, but this is good for local testing
+    app.run(host='0.0.0.0', port=8080)

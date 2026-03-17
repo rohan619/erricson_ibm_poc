@@ -1,10 +1,18 @@
-FROM python:3.10-slim
+# Use the official, lightweight Python image
+FROM python:3.11-slim
 
+# Set the working directory inside the container
 WORKDIR /app
 
-COPY app.py .
+# Copy the requirements first (this makes Docker building much faster!)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-EXPOSE 8000
+# Copy the rest of your application code
+COPY . .
 
-CMD ["python", "app.py"]
-# Testing
+# Expose the port the app runs on
+EXPOSE 8080
+
+# Run the application using Gunicorn (Production standard!)
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "app:app"]
