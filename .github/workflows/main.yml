@@ -150,24 +150,21 @@ jobs:
           token: ${{ secrets.GITOPS_PAT }}
           path: 'app-repo'
 
-      # 2. Find and Replace the image digest, then commit and push!
       - name: Update Image Tag and Push
         run: |
           cd app-repo
           
-          # The exact image string we built earlier
-          NEW_IMAGE="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ needs.build-image.outputs.image_digest }}"
-          
-          # Use sed to find the old image line and replace it with the new one
+          # 1. Use sed to find the old newTag line and replace it with the fresh image digest
           sed -i "s|newTag: .*|newTag: ${{ needs.build-image.outputs.image_digest }}|g" base/kustomization.yaml
           
-          git add base/kustomization.yaml
-          
-          # Configure Git and push the commit back to GitHub
+          # 2. Configure Git identity
           git config user.name "GitHub Actions Bot 🤖"
           git config user.email "actions@github.com"
-          git add deployment.yaml
-          git commit -m "Auto-update staging image to commit ${{ github.sha }}"
+          
+          # 3. Add ONLY the Kustomize file we just changed
+          git add base/kustomization.yaml
+          
+          # 4. Commit and push back to GitHub!
+          git commit -m "Auto-update Kustomize image to commit ${{ github.sha }}"
           git push origin main
-
 
