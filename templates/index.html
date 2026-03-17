@@ -3,45 +3,97 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Cloud App</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #121212;
-            color: #ffffff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-        }
-        .card {
-            background-color: #1e1e1e;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
-            text-align: center;
-            border-top: 4px solid #4285f4; /* Google Blue */
-        }
-        h1 { color: #4285f4; margin-bottom: 10px; }
-        .pod-name {
-            background-color: #2d2d2d;
-            padding: 10px 20px;
-            border-radius: 6px;
-            font-family: monospace;
-            color: #34a853; /* Google Green */
-            font-size: 1.2em;
-            margin-top: 20px;
-            display: inline-block;
-        }
-    </style>
+    <title>GKE Real-Time Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-    <div class="card">
-        <h1>🚀 Deployment Successful!</h1>
-        <p>Your CI/CD pipeline is running perfectly on Google Kubernetes Engine.</p>
-        <p>Currently serving traffic from pod:</p>
-        <div class="pod-name">{{ pod_name }}</div>
+<body class="bg-gray-900 text-white font-sans antialiased p-8">
+
+    <div class="max-w-5xl mx-auto">
+        <div class="flex items-center justify-between mb-8 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">🚀 Deployment Successful!</h1>
+                <p class="text-gray-400 mt-1">GKE Telemetry & System Dashboard</p>
+            </div>
+            <div class="text-right">
+                <p class="text-sm text-gray-400">Server Time (UTC)</p>
+                <p class="font-mono text-green-400">{{ system_info.time }}</p>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+                <h2 class="text-xl font-semibold mb-4 text-purple-400">🌐 Network Identity</h2>
+                <div class="space-y-3">
+                    <div>
+                        <p class="text-sm text-gray-400">Active Pod Name</p>
+                        <p class="font-mono text-lg bg-gray-900 p-2 rounded mt-1">{{ pod_name }}</p>
+                    </div>
+                    <div>
+                        <p class="text-sm text-gray-400">Internal Pod IP</p>
+                        <p class="font-mono text-lg bg-gray-900 p-2 rounded mt-1">{{ pod_ip }}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
+                <h2 class="text-xl font-semibold mb-4 text-yellow-400">⚙️ Software Stack</h2>
+                <div class="space-y-3">
+                    <div class="flex justify-between border-b border-gray-700 pb-2">
+                        <span class="text-gray-400">Python Version</span>
+                        <span class="font-mono">{{ system_info.python_version }}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-700 pb-2">
+                        <span class="text-gray-400">Operating System</span>
+                        <span class="font-mono">{{ system_info.os }} {{ system_info.release }}</span>
+                    </div>
+                    <div class="flex justify-between border-b border-gray-700 pb-2">
+                        <span class="text-gray-400">Web Server</span>
+                        <span class="font-mono">Gunicorn + Flask</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 md:col-span-2">
+                <h2 class="text-xl font-semibold mb-4 text-red-400">📊 Live Hardware Metrics</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm font-medium text-gray-300">CPU Usage</span>
+                            <span class="text-sm font-medium text-white" id="cpu-text">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-4">
+                            <div class="bg-blue-500 h-4 rounded-full transition-all duration-500" id="cpu-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between mb-1">
+                            <span class="text-sm font-medium text-gray-300">Memory Usage</span>
+                            <span class="text-sm font-medium text-white" id="mem-text">0%</span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-4">
+                            <div class="bg-green-500 h-4 rounded-full transition-all duration-500" id="mem-bar" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
+
+    <script>
+        setInterval(() => {
+            fetch('/api/metrics')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('cpu-bar').style.width = data.cpu + '%';
+                    document.getElementById('cpu-text').innerText = data.cpu + '%';
+                    
+                    document.getElementById('mem-bar').style.width = data.memory + '%';
+                    document.getElementById('mem-text').innerText = data.memory + '%';
+                });
+        }, 1000);
+    </script>
 </body>
 </html>
