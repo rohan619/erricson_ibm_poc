@@ -159,7 +159,9 @@ jobs:
           NEW_IMAGE="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ needs.build-image.outputs.image_digest }}"
           
           # Use sed to find the old image line and replace it with the new one
-          sed -i "s|image: .*|image: $NEW_IMAGE|g" deployment.yaml
+          sed -i "s|newTag: .*|newTag: ${{ needs.build-image.outputs.image_digest }}|g" base/kustomization.yaml
+          
+          git add base/kustomization.yaml
           
           # Configure Git and push the commit back to GitHub
           git config user.name "GitHub Actions Bot 🤖"
