@@ -150,12 +150,18 @@ jobs:
           token: ${{ secrets.GITOPS_PAT }}
           path: 'app-repo'
 
-      - name: Update Image Tag and Push
+      - name: Update Image Digest and Push
         run: |
           cd app-repo
           
-          # 1. Use sed to find the old newTag line and replace it with the fresh image digest
-          sed -i "s|newTag: .*|newTag: ${{ needs.build-image.outputs.image_digest }}|g" base/kustomization.yaml
+          # 1. Update Kustomize to use digest pinning (image@sha256:...)
+          if grep -qE '^[[:space:]]*digest:' base/kustomization.yaml; then
+            sed -i "s|^[[:space:]]*digest: .*|    digest: ${{ needs.build-image.outputs.image_digest }}|g" base/kustomization.yaml
+          elif grep -qE '^[[:space:]]*newTag:' base/kustomization.yaml; then
+            sed -i "s|^[[:space:]]*newTag: .*|    digest: ${{ needs.build-image.outputs.image_digest }}|g" base/kustomization.yaml
+          else
+            sed -i "/^[[:space:]]*newName:/a\\    digest: ${{ needs.build-image.outputs.image_digest }}" base/kustomization.yaml
+          fi
           
           # 2. Configure Git identity
           git config user.name "GitHub Actions Bot 🤖"
@@ -167,4 +173,3 @@ jobs:
           # 4. Commit and push back to GitHub!
           git commit -m "Auto-update Kustomize image to commit ${{ github.sha }}"
           git push origin main
-

@@ -37,7 +37,7 @@ This creates a secure delivery chain:
 - Fortify SCA
 - Google Cloud Build + Artifact Registry
 - Google Binary Authorization
-- GitOps repository update (Kustomize `newTag`)
+- GitOps repository update (Kustomize `digest`)
 
 ## Repository Structure
 
@@ -160,7 +160,7 @@ Workflow file: `.github/workflows/main.yml`
 6. `update-gitops-repo`
 - Depends on `build-image` and `sign-image`
 - Checks out separate GitOps repo
-- Updates Kustomize `newTag` with digest
+- Updates Kustomize `digest` with the new image digest
 - Commits and pushes change
 
 ## Required GitHub Secrets
