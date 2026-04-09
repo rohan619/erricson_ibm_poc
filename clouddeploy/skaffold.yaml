@@ -10,8 +10,27 @@ customActions:
           - "-c"
           - |-
             set -euo pipefail
-            chmod +x ./scripts/clouddeploy_gitops_render.sh
-            ./scripts/clouddeploy_gitops_render.sh
+            IMAGE_REPO="${CLOUD_DEPLOY_customTarget_IMAGE_REPO:-${IMAGE_REPO:-}}"
+            IMAGE_DIGEST="${CLOUD_DEPLOY_customTarget_IMAGE_DIGEST:-${IMAGE_DIGEST:-}}"
+            OUTPUT_PATH="${CLOUD_DEPLOY_OUTPUT_GCS_PATH:-}"
+
+            if [[ -z "$OUTPUT_PATH" || -z "$IMAGE_REPO" || -z "$IMAGE_DIGEST" ]]; then
+              printf '{"resultStatus":"FAILED","failureMessage":"Missing CLOUD_DEPLOY_OUTPUT_GCS_PATH, IMAGE_REPO, or IMAGE_DIGEST"}\n' > /tmp/results.json
+              if [[ -n "$OUTPUT_PATH" ]]; then
+                gcloud storage cp /tmp/results.json "$OUTPUT_PATH/results.json" || true
+              fi
+              exit 1
+            fi
+
+            printf 'release: %s\ntarget: %s\nimage: %s@%s\n' \
+              "${CLOUD_DEPLOY_RELEASE:-unknown}" \
+              "${CLOUD_DEPLOY_TARGET:-unknown}" \
+              "$IMAGE_REPO" \
+              "$IMAGE_DIGEST" > /tmp/rendered-manifest.yaml
+
+            gcloud storage cp /tmp/rendered-manifest.yaml "$OUTPUT_PATH/rendered-manifest.yaml"
+            printf '{"resultStatus":"SUCCEEDED","manifestFile":"%s/rendered-manifest.yaml"}\n' "$OUTPUT_PATH" > /tmp/results.json
+            gcloud storage cp /tmp/results.json "$OUTPUT_PATH/results.json"
 
   - name: gitops-deploy
     containers:
@@ -22,5 +41,88 @@ customActions:
           - "-c"
           - |-
             set -euo pipefail
-            chmod +x ./scripts/clouddeploy_gitops_deploy.sh
-            ./scripts/clouddeploy_gitops_deploy.sh
+            OUTPUT_PATH="${CLOUD_DEPLOY_OUTPUT_GCS_PATH:-}"
+            fail_and_upload() {
+              local msg="$1"
+              printf '{"resultStatus":"FAILED","failureMessage":"%s"}\n' "$msg" > /tmp/results.json
+              if [[ -n "$OUTPUT_PATH" ]]; then
+                gcloud storage cp /tmp/results.json "$OUTPUT_PATH/results.json" || true
+              fi
+              exit 1
+            }
+
+            if [[ -z "$OUTPUT_PATH" ]]; then
+              echo "Missing CLOUD_DEPLOY_OUTPUT_GCS_PATH" >&2
+              exit 1
+            fi
+
+            IMAGE_REPO="${CLOUD_DEPLOY_customTarget_IMAGE_REPO:-${IMAGE_REPO:-}}"
+            IMAGE_DIGEST="${CLOUD_DEPLOY_customTarget_IMAGE_DIGEST:-${IMAGE_DIGEST:-}}"
+            GITOPS_REPO="${CLOUD_DEPLOY_customTarget_GITOPS_REPO:-${GITOPS_REPO:-rohan619/erricson_ibm_app_repo}}"
+            GITOPS_BRANCH="${CLOUD_DEPLOY_customTarget_GITOPS_BRANCH:-${GITOPS_BRANCH:-main}}"
+            GITOPS_PAT_SECRET="${CLOUD_DEPLOY_customTarget_GITOPS_PAT_SECRET:-${GITOPS_PAT_SECRET:-}}"
+            GITOPS_PAT="${CLOUD_DEPLOY_customTarget_GITOPS_PAT:-${GITOPS_PAT:-}}"
+
+            if [[ -z "$IMAGE_REPO" || -z "$IMAGE_DIGEST" ]]; then
+              fail_and_upload "Missing IMAGE_REPO or IMAGE_DIGEST deploy parameters"
+            fi
+
+            if [[ -z "$GITOPS_PAT" && -n "$GITOPS_PAT_SECRET" ]]; then
+              GITOPS_PAT="$(gcloud secrets versions access latest --secret="$GITOPS_PAT_SECRET")"
+            fi
+            if [[ -z "$GITOPS_PAT" ]]; then
+              fail_and_upload "Missing GITOPS_PAT (or GITOPS_PAT_SECRET)"
+            fi
+
+            case "${CLOUD_DEPLOY_TARGET:-}" in
+              *qa*|*staging*)
+                KUSTOMIZATION_FILE="overlays/staging/kustomization.yaml"
+                ;;
+              *prod*)
+                KUSTOMIZATION_FILE="overlays/prod/kustomization.yaml"
+                ;;
+              *)
+                fail_and_upload "Unsupported CLOUD_DEPLOY_TARGET: ${CLOUD_DEPLOY_TARGET:-unknown}"
+                ;;
+            esac
+
+            WORKDIR="$(mktemp -d)"
+            trap 'rm -rf "$WORKDIR"' EXIT
+            REPO_URL="https://x-access-token:${GITOPS_PAT}@github.com/${GITOPS_REPO}.git"
+            git clone --depth 1 --branch "$GITOPS_BRANCH" "$REPO_URL" "$WORKDIR/repo" >/dev/null 2>&1 || fail_and_upload "Failed to clone GitOps repo"
+
+            FILE_PATH="$WORKDIR/repo/$KUSTOMIZATION_FILE"
+            [[ -f "$FILE_PATH" ]] || fail_and_upload "Kustomization file not found: $KUSTOMIZATION_FILE"
+
+            if grep -qE '^[[:space:]]*newName:' "$FILE_PATH"; then
+              sed -i "s|^[[:space:]]*newName: .*|    newName: ${IMAGE_REPO}|g" "$FILE_PATH"
+            fi
+
+            if grep -qE '^[[:space:]]*digest:' "$FILE_PATH"; then
+              sed -i "s|^[[:space:]]*digest: .*|    digest: ${IMAGE_DIGEST}|g" "$FILE_PATH"
+            else
+              cat >> "$FILE_PATH" <<YAML
+
+            images:
+              - name: my-app-image
+                newName: ${IMAGE_REPO}
+                digest: ${IMAGE_DIGEST}
+            YAML
+            fi
+
+            cd "$WORKDIR/repo"
+            git config user.name "Cloud Deploy GitOps Bot"
+            git config user.email "cloud-deploy-bot@users.noreply.github.com"
+            git add "$KUSTOMIZATION_FILE"
+
+            if git diff --cached --quiet; then
+              printf '{"resultStatus":"SUCCEEDED","failureMessage":"No changes required"}\n' > /tmp/results.json
+              gcloud storage cp /tmp/results.json "$OUTPUT_PATH/results.json"
+              exit 0
+            fi
+
+            git commit -m "clouddeploy(${CLOUD_DEPLOY_TARGET}): update image digest to ${IMAGE_DIGEST}" >/dev/null || fail_and_upload "Failed to commit GitOps update"
+            git push origin "$GITOPS_BRANCH" >/dev/null 2>&1 || fail_and_upload "Failed to push GitOps update"
+
+            printf '{"resultStatus":"SUCCEEDED"}\n' > /tmp/results.json
+            gcloud storage cp /tmp/results.json "$OUTPUT_PATH/results.json"
