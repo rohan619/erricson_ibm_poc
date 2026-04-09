@@ -62,6 +62,9 @@ customActions:
             GITOPS_BRANCH="${CLOUD_DEPLOY_customTarget_GITOPS_BRANCH:-${GITOPS_BRANCH:-main}}"
             GITOPS_PAT_SECRET="${CLOUD_DEPLOY_customTarget_GITOPS_PAT_SECRET:-${GITOPS_PAT_SECRET:-}}"
             GITOPS_PAT="${CLOUD_DEPLOY_customTarget_GITOPS_PAT:-${GITOPS_PAT:-}}"
+            GITOPS_FILE_DEFAULT="${CLOUD_DEPLOY_customTarget_GITOPS_FILE:-${GITOPS_FILE:-base/kustomization.yaml}}"
+            GITOPS_FILE_QA="${CLOUD_DEPLOY_customTarget_GITOPS_FILE_QA:-${GITOPS_FILE_QA:-}}"
+            GITOPS_FILE_PROD="${CLOUD_DEPLOY_customTarget_GITOPS_FILE_PROD:-${GITOPS_FILE_PROD:-}}"
 
             if [[ -z "$IMAGE_REPO" || -z "$IMAGE_DIGEST" ]]; then
               fail_and_upload "Missing IMAGE_REPO or IMAGE_DIGEST deploy parameters"
@@ -76,15 +79,16 @@ customActions:
 
             case "${CLOUD_DEPLOY_TARGET:-}" in
               *qa*|*staging*)
-                KUSTOMIZATION_FILE="overlays/staging/kustomization.yaml"
+                KUSTOMIZATION_FILE="${GITOPS_FILE_QA:-$GITOPS_FILE_DEFAULT}"
                 ;;
               *prod*)
-                KUSTOMIZATION_FILE="overlays/prod/kustomization.yaml"
+                KUSTOMIZATION_FILE="${GITOPS_FILE_PROD:-$GITOPS_FILE_DEFAULT}"
                 ;;
               *)
-                fail_and_upload "Unsupported CLOUD_DEPLOY_TARGET: ${CLOUD_DEPLOY_TARGET:-unknown}"
+                KUSTOMIZATION_FILE="$GITOPS_FILE_DEFAULT"
                 ;;
             esac
+            echo "Updating GitOps file: $KUSTOMIZATION_FILE"
 
             WORKDIR="$(mktemp -d)"
             trap 'rm -rf "$WORKDIR"' EXIT

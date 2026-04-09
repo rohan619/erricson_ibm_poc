@@ -164,7 +164,7 @@ jobs:
             --delivery-pipeline="$CLOUD_DEPLOY_PIPELINE" \
             --source="." \
             --skaffold-file="clouddeploy/skaffold.yaml" \
-            --deploy-parameters="customTarget/IMAGE_REPO=$IMAGE_REPO,customTarget/IMAGE_DIGEST=${{ needs.build-image.outputs.image_digest }},customTarget/GITOPS_REPO=$GITOPS_REPO,customTarget/GITOPS_BRANCH=$GITOPS_BRANCH,customTarget/GITOPS_PAT=${{ secrets.GITOPS_PAT }}"
+            --deploy-parameters="customTarget/IMAGE_REPO=$IMAGE_REPO,customTarget/IMAGE_DIGEST=${{ needs.build-image.outputs.image_digest }},customTarget/GITOPS_REPO=$GITOPS_REPO,customTarget/GITOPS_BRANCH=$GITOPS_BRANCH,customTarget/GITOPS_PAT=${{ secrets.GITOPS_PAT }},customTarget/GITOPS_FILE_QA=overlays/staging/kustomization.yaml,customTarget/GITOPS_FILE_PROD=overlays/prod/kustomization.yaml"
 
       - name: Wait for QA rollout result
         run: |
