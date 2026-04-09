@@ -1,0 +1,34 @@
+apiVersion: skaffold/v4beta7
+kind: Config
+customActions:
+  - name: gitops-render
+    containers:
+      - name: render
+        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+        command: ["/bin/bash"]
+        args:
+          - "-c"
+          - |-
+            set -euo pipefail
+            cat > rendered-manifest.yaml <<MANIFEST
+            release: ${CLOUD_DEPLOY_RELEASE}
+            target: ${CLOUD_DEPLOY_TARGET}
+            image: ${IMAGE_REPO}@${IMAGE_DIGEST}
+            MANIFEST
+            gcloud storage cp rendered-manifest.yaml "${CLOUD_DEPLOY_OUTPUT_GCS_PATH}/rendered-manifest.yaml"
+            cat > results.json <<RESULTS
+            {"resultStatus":"SUCCEEDED","manifestFile":"${CLOUD_DEPLOY_OUTPUT_GCS_PATH}/rendered-manifest.yaml"}
+            RESULTS
+            gcloud storage cp results.json "${CLOUD_DEPLOY_OUTPUT_GCS_PATH}/results.json"
+
+  - name: gitops-deploy
+    containers:
+      - name: deploy
+        image: gcr.io/google.com/cloudsdktool/google-cloud-cli:slim
+        command: ["/bin/bash"]
+        args:
+          - "-c"
+          - |-
+            set -euo pipefail
+            chmod +x ./scripts/clouddeploy_gitops_deploy.sh
+            ./scripts/clouddeploy_gitops_deploy.sh

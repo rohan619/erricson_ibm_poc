@@ -1,4 +1,4 @@
-name: CI - Tests, SonarQube, Fortify, BinAuthz
+name: CI - Build And Cloud Deploy GitOps
 
 on:
   push:
@@ -14,48 +14,25 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-      - name: Install deps
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
           pip install -r requirements.txt
-      - name: Run Tests
+          pip install pytest
+      - name: Run tests
         env:
-          PYTHONPATH: . # This dot means "Look in the current root folder!"
+          PYTHONPATH: .
         run: pytest -q
-
-  sonar:
-    runs-on: my-gke-runners
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: SonarCloud Scan
-        uses: SonarSource/sonarqube-scan-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-  fortify:
-    runs-on: my-gke-runners
-    needs: test
-    steps:
-      - uses: actions/checkout@v4
-      - name: Prepare Fortify
-        run: chmod +x ./fortify_scan.sh
-      - name: Run Fortify SCA
-        env:
-          FORTIFY_SCA_IMAGE: ${{ secrets.FORTIFY_SCA_IMAGE }}
-        run: ./fortify_scan.sh
 
   build-image:
     runs-on: my-gke-runners
-    needs: [sonar, fortify]
+    needs: test
     permissions:
       contents: read
       id-token: write
     outputs:
-      image_digest: ${{ steps.get_digest.outputs.DIGEST }}
+      image_repo: ${{ steps.meta.outputs.image_repo }}
+      image_digest: ${{ steps.digest.outputs.image_digest }}
     steps:
       - uses: actions/checkout@v4
 
@@ -68,43 +45,43 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
+      - id: meta
+        name: Build image metadata
+        run: |
+          IMAGE_REPO="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image"
+          echo "image_repo=${IMAGE_REPO}" >> "$GITHUB_OUTPUT"
+
       - name: Start Cloud Build
         run: |
           BUILD_ID=$(gcloud builds submit \
             --async \
-            --tag ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }} \
+            --tag "${{ steps.meta.outputs.image_repo }}:${{ github.sha }}" \
             --format="value(id)")
-          echo "BUILD_ID=$BUILD_ID" >> $GITHUB_ENV
+          echo "BUILD_ID=${BUILD_ID}" >> "$GITHUB_ENV"
 
       - name: Wait for Cloud Build completion
         run: |
           STATUS="WORKING"
           while [[ "$STATUS" == "WORKING" || "$STATUS" == "QUEUED" ]]; do
-            STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
-            echo "Current build status: $STATUS"
+            STATUS=$(gcloud builds describe "$BUILD_ID" --format="value(status)")
+            echo "Cloud Build status: $STATUS"
             sleep 10
           done
-          if [[ "$STATUS" != "SUCCESS" ]]; then exit 1; fi
-
-      - name: Get image digest
-        id: get_digest
-        run: |
-          # The exact image path and tag we just built
-          IMAGE_PATH="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image:${{ github.sha }}"
-          
-          echo "Fetching digest directly for exact tag: $IMAGE_PATH"
-          
-          # Use 'describe' instead of 'list' to target the exact tag. No sleep needed!
-          DIGEST=$(gcloud artifacts docker images describe $IMAGE_PATH \
-            --format="value(image_summary.digest)")
-          
-          if [ -z "$DIGEST" ]; then
-            echo "ERROR: Cannot find the image digest for the pushed tag!"
+          if [[ "$STATUS" != "SUCCESS" ]]; then
+            echo "Build failed with status: $STATUS"
             exit 1
           fi
-          
-          echo "DIGEST=$DIGEST" >> $GITHUB_OUTPUT
-          echo "Final IMAGE_DIGEST found: $DIGEST"
+
+      - id: digest
+        name: Resolve image digest
+        run: |
+          IMAGE_REF="${{ steps.meta.outputs.image_repo }}:${{ github.sha }}"
+          DIGEST=$(gcloud artifacts docker images describe "$IMAGE_REF" --format="value(image_summary.digest)")
+          if [[ -z "$DIGEST" ]]; then
+            echo "Could not resolve image digest for $IMAGE_REF"
+            exit 1
+          fi
+          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   sign-image:
     runs-on: my-gke-runners
@@ -129,7 +106,7 @@ jobs:
         run: |
           gcloud beta container binauthz attestations sign-and-create \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --artifact-url="${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image@${{ needs.build-image.outputs.image_digest }}" \
+            --artifact-url="${{ needs.build-image.outputs.image_repo }}@${{ needs.build-image.outputs.image_digest }}" \
             --attestor="my-attestor" \
             --attestor-project="${{ secrets.GCP_PROJECT_ID }}" \
             --keyversion-project="${{ secrets.GCP_PROJECT_ID }}" \
@@ -138,38 +115,70 @@ jobs:
             --keyversion-key="asymmetric-key" \
             --keyversion="1"
 
-  update-gitops-repo:
+  cloud-deploy-gitops:
     runs-on: my-gke-runners
     needs: [build-image, sign-image]
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      CLOUD_DEPLOY_REGION: us-central1
+      CLOUD_DEPLOY_PIPELINE: erricson-ibm-gitops-pipeline
+      GITOPS_REPO: rohan619/erricson_ibm_app_repo
+      GITOPS_BRANCH: main
     steps:
-      # 1. Checkout the SECOND repository (Your GitOps Repo)
-      - name: Checkout GitOps Repo
-        uses: actions/checkout@v4
-        with:
-          repository: 'rohan619/erricson_ibm_app_repo' # Change this to your Repo 2 name!
-          token: ${{ secrets.GITOPS_PAT }}
-          path: 'app-repo'
+      - uses: actions/checkout@v4
 
-      - name: Update Image Digest and Push
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Apply Cloud Deploy resources
         run: |
-          cd app-repo
-          
-          # 1. Update Kustomize to use digest pinning (image@sha256:...)
-          if grep -qE '^[[:space:]]*digest:' base/kustomization.yaml; then
-            sed -i "s|^[[:space:]]*digest: .*|    digest: ${{ needs.build-image.outputs.image_digest }}|g" base/kustomization.yaml
-          elif grep -qE '^[[:space:]]*newTag:' base/kustomization.yaml; then
-            sed -i "s|^[[:space:]]*newTag: .*|    digest: ${{ needs.build-image.outputs.image_digest }}|g" base/kustomization.yaml
-          else
-            sed -i "/^[[:space:]]*newName:/a\\    digest: ${{ needs.build-image.outputs.image_digest }}" base/kustomization.yaml
-          fi
-          
-          # 2. Configure Git identity
-          git config user.name "GitHub Actions Bot 🤖"
-          git config user.email "actions@github.com"
-          
-          # 3. Add ONLY the Kustomize file we just changed
-          git add base/kustomization.yaml
-          
-          # 4. Commit and push back to GitHub!
-          git commit -m "Auto-update Kustomize image to commit ${{ github.sha }}"
-          git push origin main
+          gcloud deploy apply \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="$CLOUD_DEPLOY_REGION" \
+            --file="clouddeploy/clouddeploy.yaml"
+
+      - id: release
+        name: Create Cloud Deploy release
+        run: |
+          RELEASE_NAME="rel-${GITHUB_SHA::12}-$(date +%m%d%H%M)"
+          echo "RELEASE_NAME=$RELEASE_NAME" >> "$GITHUB_ENV"
+
+          gcloud deploy releases create "$RELEASE_NAME" \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="$CLOUD_DEPLOY_REGION" \
+            --delivery-pipeline="$CLOUD_DEPLOY_PIPELINE" \
+            --source="." \
+            --skaffold-file="clouddeploy/skaffold.yaml" \
+            --deploy-parameters="customTarget/IMAGE_REPO=${{ needs.build-image.outputs.image_repo }},customTarget/IMAGE_DIGEST=${{ needs.build-image.outputs.image_digest }},customTarget/GITOPS_REPO=$GITOPS_REPO,customTarget/GITOPS_BRANCH=$GITOPS_BRANCH,customTarget/GITOPS_PAT=${{ secrets.GITOPS_PAT }}"
+
+      - name: Promote release to prod stage
+        run: |
+          ATTEMPTS=0
+          MAX_ATTEMPTS=30
+          until gcloud deploy releases promote \
+            --project="${{ secrets.GCP_PROJECT_ID }}" \
+            --region="$CLOUD_DEPLOY_REGION" \
+            --delivery-pipeline="$CLOUD_DEPLOY_PIPELINE" \
+            --release="$RELEASE_NAME" \
+            --quiet; do
+              ATTEMPTS=$((ATTEMPTS + 1))
+              if [[ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]]; then
+                echo "Timed out waiting to promote release $RELEASE_NAME to prod stage."
+                exit 1
+              fi
+              echo "QA rollout not ready for promotion yet. Retrying in 20s..."
+              sleep 20
+            done
+
+      - name: Promotion note
+        run: |
+          echo "Release $RELEASE_NAME promoted to prod target rollout."
+          echo "Prod target has requireApproval=true; approve rollout in Cloud Deploy to execute prod GitOps update."

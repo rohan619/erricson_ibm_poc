@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+Accounts: Sign in with GitHub#!/usr/bin/env bash
 set -euo pipefail
 
 # Simple helper script to run Fortify SCA inside Docker if available.

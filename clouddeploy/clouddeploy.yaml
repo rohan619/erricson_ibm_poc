@@ -1,0 +1,31 @@
+apiVersion: deploy.cloud.google.com/v1
+kind: DeliveryPipeline
+metadata:
+  name: erricson-ibm-gitops-pipeline
+serialPipeline:
+  stages:
+    - targetId: gitops-qa
+    - targetId: gitops-prod
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: gitops-qa
+customTarget:
+  customTargetType: gitops-target
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: Target
+metadata:
+  name: gitops-prod
+requireApproval: true
+customTarget:
+  customTargetType: gitops-target
+---
+apiVersion: deploy.cloud.google.com/v1
+kind: CustomTargetType
+metadata:
+  name: gitops-target
+customActions:
+  renderAction: gitops-render
+  deployAction: gitops-deploy
