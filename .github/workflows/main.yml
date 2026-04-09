@@ -89,6 +89,8 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      IMAGE_REPO: ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image
     steps:
       - id: auth
         uses: google-github-actions/auth@v2
@@ -104,9 +106,13 @@ jobs:
 
       - name: Sign and Create Attestation
         run: |
+          if [[ -z "$IMAGE_REPO" ]]; then
+            echo "IMAGE_REPO is empty; check ARTIFACT_REGION/GCP_PROJECT_ID/ARTIFACT_REPO secrets."
+            exit 1
+          fi
           gcloud beta container binauthz attestations sign-and-create \
             --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --artifact-url="${{ needs.build-image.outputs.image_repo }}@${{ needs.build-image.outputs.image_digest }}" \
+            --artifact-url="${IMAGE_REPO}@${{ needs.build-image.outputs.image_digest }}" \
             --attestor="my-attestor" \
             --attestor-project="${{ secrets.GCP_PROJECT_ID }}" \
             --keyversion-project="${{ secrets.GCP_PROJECT_ID }}" \
@@ -126,6 +132,7 @@ jobs:
       CLOUD_DEPLOY_PIPELINE: erricson-ibm-gitops-pipeline
       GITOPS_REPO: rohan619/erricson_ibm_app_repo
       GITOPS_BRANCH: main
+      IMAGE_REPO: ${{ secrets.ARTIFACT_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/${{ secrets.ARTIFACT_REPO }}/app-image
     steps:
       - uses: actions/checkout@v4
 
@@ -157,7 +164,7 @@ jobs:
             --delivery-pipeline="$CLOUD_DEPLOY_PIPELINE" \
             --source="." \
             --skaffold-file="clouddeploy/skaffold.yaml" \
-            --deploy-parameters="customTarget/IMAGE_REPO=${{ needs.build-image.outputs.image_repo }},customTarget/IMAGE_DIGEST=${{ needs.build-image.outputs.image_digest }},customTarget/GITOPS_REPO=$GITOPS_REPO,customTarget/GITOPS_BRANCH=$GITOPS_BRANCH,customTarget/GITOPS_PAT=${{ secrets.GITOPS_PAT }}"
+            --deploy-parameters="customTarget/IMAGE_REPO=$IMAGE_REPO,customTarget/IMAGE_DIGEST=${{ needs.build-image.outputs.image_digest }},customTarget/GITOPS_REPO=$GITOPS_REPO,customTarget/GITOPS_BRANCH=$GITOPS_BRANCH,customTarget/GITOPS_PAT=${{ secrets.GITOPS_PAT }}"
 
       - name: Promote release to prod stage
         run: |
