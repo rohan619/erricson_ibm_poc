@@ -1,99 +1,442 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GKE Real-Time Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mission Control Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink-900: #081927;
+      --ink-800: #0e2a3f;
+      --ink-700: #134057;
+      --surface: rgba(8, 25, 39, 0.78);
+      --line: rgba(132, 214, 255, 0.22);
+      --text: #e9fbff;
+      --text-soft: #a8d0db;
+      --ok: #2de197;
+      --warn: #ffcd57;
+      --alert: #ff6b5e;
+      --sky: #42c4ff;
+      --aqua: #4fffd0;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Space Grotesk", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(900px 500px at 10% -10%, rgba(79, 255, 208, 0.15), transparent 60%),
+        radial-gradient(700px 500px at 95% 5%, rgba(66, 196, 255, 0.22), transparent 65%),
+        linear-gradient(160deg, var(--ink-900) 0%, #04111d 60%, #051a24 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .frame {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+      animation: rise 700ms ease-out;
+    }
+
+    .hero {
+      border: 1px solid var(--line);
+      background: linear-gradient(140deg, rgba(9, 34, 52, 0.92), rgba(4, 22, 34, 0.85));
+      border-radius: 20px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -60px;
+      top: -60px;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(79, 255, 208, 0.22), transparent 70%);
+      pointer-events: none;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.8rem, 3.5vw, 2.7rem);
+      line-height: 1.1;
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      margin: 10px 0 0;
+      color: var(--text-soft);
+      font-size: 1rem;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: repeat(12, 1fr);
+    }
+
+    .card {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 16px;
+      backdrop-filter: blur(3px);
+    }
+
+    .span-4 { grid-column: span 4; }
+    .span-6 { grid-column: span 6; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    .label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-soft);
+      margin-bottom: 8px;
+    }
+
+    .value {
+      font-family: "IBM Plex Mono", monospace;
+      font-size: 1.1rem;
+      color: #f4feff;
+      word-break: break-word;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(11, 35, 54, 0.6);
+      font-size: 0.85rem;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 16px var(--ok);
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    .metrics {
+      display: grid;
+      gap: 12px;
+    }
+
+    .bar-wrap {
+      display: grid;
+      gap: 6px;
+    }
+
+    .bar-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.86rem;
+      color: var(--text-soft);
+    }
+
+    .bar-track {
+      width: 100%;
+      height: 14px;
+      border-radius: 999px;
+      background: rgba(145, 220, 255, 0.12);
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      transition: width 450ms ease;
+    }
+
+    .cpu { background: linear-gradient(90deg, #3ea2ff, #74d7ff); }
+    .mem { background: linear-gradient(90deg, #47e1b7, #9bffdb); }
+    .disk { background: linear-gradient(90deg, #ffab53, #ffd08a); }
+
+    .status-box {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .status-tile {
+      background: rgba(16, 44, 64, 0.65);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px;
+      min-height: 84px;
+    }
+
+    .status-tile strong {
+      display: block;
+      font-size: 1rem;
+      margin-top: 8px;
+      font-family: "IBM Plex Mono", monospace;
+    }
+
+    #history-chart {
+      width: 100%;
+      min-height: 180px;
+      border-radius: 12px;
+      border: 1px solid rgba(132, 214, 255, 0.16);
+      background: rgba(5, 22, 34, 0.75);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    button {
+      border: 1px solid var(--line);
+      background: linear-gradient(135deg, rgba(66, 196, 255, 0.18), rgba(79, 255, 208, 0.14));
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+
+    .muted {
+      color: var(--text-soft);
+      font-size: 0.9rem;
+    }
+
+    .critical { color: var(--alert); }
+    .watch { color: var(--warn); }
+    .stable { color: var(--ok); }
+
+    @media (max-width: 980px) {
+      .span-4, .span-6, .span-8 { grid-column: span 12; }
+      .status-box { grid-template-columns: 1fr; }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 0.8; }
+      50% { transform: scale(1.2); opacity: 1; }
+    }
+
+    @keyframes rise {
+      from { transform: translateY(8px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
 </head>
-<body class="bg-gray-900 text-white font-sans antialiased p-8">
+<body>
+  <main class="frame">
+    <section class="hero">
+      <h1>Mission Control Live</h1>
+      <p class="subtitle">Telemetry cockpit for runtime health, system identity, and release confidence.</p>
+      <div class="controls">
+        <span class="pill"><span class="dot"></span> Live Stream Active</span>
+        <button id="toggle-refresh" type="button">Pause Stream</button>
+        <span class="muted" id="last-update">Last update: just now</span>
+      </div>
+    </section>
 
-    <div class="max-w-5xl mx-auto">
-        <div class="flex items-center justify-between mb-8 border-b border-gray-700 pb-4">
-            <div>
-                <h1 class="text-3xl font-bold text-blue-400">🚀 Deployment Successful!</h1>
-                <p class="text-gray-400 mt-1">GKE Telemetry & System Dashboard</p>
-            </div>
-            <div class="text-right">
-                <p class="text-sm text-gray-400">Server Time (UTC)</p>
-                <p class="font-mono text-green-400">{{ system_info.time }}</p>
-            </div>
+    <section class="grid">
+      <article class="card span-4">
+        <div class="label">Pod Identity</div>
+        <div class="value">{{ pod_name }}</div>
+        <div class="label" style="margin-top: 10px;">Pod IP</div>
+        <div class="value">{{ pod_ip }}</div>
+      </article>
+
+      <article class="card span-4">
+        <div class="label">Platform</div>
+        <div class="value">{{ system_info.os }} {{ system_info.release }}</div>
+        <div class="label" style="margin-top: 10px;">Python</div>
+        <div class="value">{{ system_info.python_version }}</div>
+      </article>
+
+      <article class="card span-4">
+        <div class="label">Service</div>
+        <div class="value">{{ system_info.service }}</div>
+        <div class="label" style="margin-top: 10px;">App Started</div>
+        <div class="value">{{ boot_info.start_time }}</div>
+      </article>
+
+      <article class="card span-8">
+        <div class="label">Resource Pressure</div>
+        <div class="metrics">
+          <div class="bar-wrap">
+            <div class="bar-head"><span>CPU Load</span><span id="cpu-text">0%</span></div>
+            <div class="bar-track"><div id="cpu-bar" class="bar-fill cpu"></div></div>
+          </div>
+          <div class="bar-wrap">
+            <div class="bar-head"><span>Memory Load</span><span id="mem-text">0%</span></div>
+            <div class="bar-track"><div id="mem-bar" class="bar-fill mem"></div></div>
+          </div>
+          <div class="bar-wrap">
+            <div class="bar-head"><span>Disk Usage</span><span id="disk-text">0%</span></div>
+            <div class="bar-track"><div id="disk-bar" class="bar-fill disk"></div></div>
+          </div>
         </div>
+      </article>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-                <h2 class="text-xl font-semibold mb-4 text-purple-400">🌐 Network Identity</h2>
-                <div class="space-y-3">
-                    <div>
-                        <p class="text-sm text-gray-400">Active Pod Name</p>
-                        <p class="font-mono text-lg bg-gray-900 p-2 rounded mt-1">{{ pod_name }}</p>
-                    </div>
-                    <div>
-                        <p class="text-sm text-gray-400">Internal Pod IP</p>
-                        <p class="font-mono text-lg bg-gray-900 p-2 rounded mt-1">{{ pod_ip }}</p>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700">
-                <h2 class="text-xl font-semibold mb-4 text-yellow-400">⚙️ Software Stack</h2>
-                <div class="space-y-3">
-                    <div class="flex justify-between border-b border-gray-700 pb-2">
-                        <span class="text-gray-400">Python Version</span>
-                        <span class="font-mono">{{ system_info.python_version }}</span>
-                    </div>
-                    <div class="flex justify-between border-b border-gray-700 pb-2">
-                        <span class="text-gray-400">Operating System</span>
-                        <span class="font-mono">{{ system_info.os }} {{ system_info.release }}</span>
-                    </div>
-                    <div class="flex justify-between border-b border-gray-700 pb-2">
-                        <span class="text-gray-400">Web Server</span>
-                        <span class="font-mono">Gunicorn + Flask</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-gray-800 p-6 rounded-xl shadow-lg border border-gray-700 md:col-span-2">
-                <h2 class="text-xl font-semibold mb-4 text-red-400">📊 Live Hardware Metrics</h2>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <span class="text-sm font-medium text-gray-300">CPU Usage</span>
-                            <span class="text-sm font-medium text-white" id="cpu-text">0%</span>
-                        </div>
-                        <div class="w-full bg-gray-700 rounded-full h-4">
-                            <div class="bg-blue-500 h-4 rounded-full transition-all duration-500" id="cpu-bar" style="width: 0%"></div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <div class="flex justify-between mb-1">
-                            <span class="text-sm font-medium text-gray-300">Memory Usage</span>
-                            <span class="text-sm font-medium text-white" id="mem-text">0%</span>
-                        </div>
-                        <div class="w-full bg-gray-700 rounded-full h-4">
-                            <div class="bg-green-500 h-4 rounded-full transition-all duration-500" id="mem-bar" style="width: 0%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      <article class="card span-4">
+        <div class="label">Stability Signal</div>
+        <div id="insight-state" class="value stable">STABLE</div>
+        <div class="status-box">
+          <div class="status-tile">
+            <span class="label">Score</span>
+            <strong id="score">100</strong>
+          </div>
+          <div class="status-tile">
+            <span class="label">Uptime</span>
+            <strong id="uptime">0s</strong>
+          </div>
+          <div class="status-tile">
+            <span class="label">Requests</span>
+            <strong id="requests">0</strong>
+          </div>
         </div>
-    </div>
+      </article>
 
-    <script>
-        setInterval(() => {
-            fetch('/api/metrics')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('cpu-bar').style.width = data.cpu + '%';
-                    document.getElementById('cpu-text').innerText = data.cpu + '%';
-                    
-                    document.getElementById('mem-bar').style.width = data.memory + '%';
-                    document.getElementById('mem-text').innerText = data.memory + '%';
-                });
-        }, 1000);
-    </script>
+      <article class="card span-12">
+        <div class="label">Live Trend (CPU + Memory)</div>
+        <canvas id="history-chart" height="190"></canvas>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    const cpuBar = document.getElementById("cpu-bar");
+    const memBar = document.getElementById("mem-bar");
+    const diskBar = document.getElementById("disk-bar");
+    const cpuText = document.getElementById("cpu-text");
+    const memText = document.getElementById("mem-text");
+    const diskText = document.getElementById("disk-text");
+    const score = document.getElementById("score");
+    const uptime = document.getElementById("uptime");
+    const requests = document.getElementById("requests");
+    const insightState = document.getElementById("insight-state");
+    const toggleButton = document.getElementById("toggle-refresh");
+    const lastUpdate = document.getElementById("last-update");
+    const chart = document.getElementById("history-chart");
+    const ctx = chart.getContext("2d");
+
+    let running = true;
+
+    function clamp(value) {
+      return Math.max(0, Math.min(100, value || 0));
+    }
+
+    function formatDuration(totalSeconds) {
+      const sec = Number(totalSeconds || 0);
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function setBar(node, value, labelNode) {
+      const safe = clamp(value);
+      node.style.width = `${safe}%`;
+      labelNode.textContent = `${safe.toFixed(1)}%`;
+    }
+
+    function drawHistory(points) {
+      const width = chart.clientWidth;
+      const height = chart.clientHeight;
+      chart.width = width;
+      chart.height = height;
+
+      ctx.clearRect(0, 0, width, height);
+
+      ctx.strokeStyle = "rgba(132,214,255,0.18)";
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 4; i++) {
+        const y = (height / 5) * i;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+        ctx.stroke();
+      }
+
+      const drawLine = (key, color) => {
+        if (!points.length) return;
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+
+        points.forEach((point, idx) => {
+          const x = points.length === 1 ? 0 : (idx / (points.length - 1)) * width;
+          const y = height - (clamp(point[key]) / 100) * height;
+          if (idx === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      };
+
+      drawLine("cpu", "#64c6ff");
+      drawLine("memory", "#6effcf");
+    }
+
+    async function refresh() {
+      if (!running) return;
+      try {
+        const [metricsRes, historyRes, insightsRes] = await Promise.all([
+          fetch("/api/metrics"),
+          fetch("/api/history"),
+          fetch("/api/insights")
+        ]);
+
+        const metrics = await metricsRes.json();
+        const history = await historyRes.json();
+        const insights = await insightsRes.json();
+
+        setBar(cpuBar, metrics.cpu, cpuText);
+        setBar(memBar, metrics.memory, memText);
+        setBar(diskBar, metrics.disk, diskText);
+
+        score.textContent = insights.stability_score;
+        uptime.textContent = formatDuration(metrics.uptime_seconds);
+        requests.textContent = metrics.requests_served;
+
+        insightState.textContent = (insights.state || "stable").toUpperCase();
+        insightState.classList.remove("critical", "watch", "stable");
+        insightState.classList.add(insights.state || "stable");
+
+        drawHistory((history.points || []).slice(-60));
+        lastUpdate.textContent = `Last update: ${new Date().toLocaleTimeString()}`;
+      } catch (_err) {
+        lastUpdate.textContent = "Last update: fetch failed";
+      }
+    }
+
+    toggleButton.addEventListener("click", () => {
+      running = !running;
+      toggleButton.textContent = running ? "Pause Stream" : "Resume Stream";
+      if (running) refresh();
+    });
+
+    refresh();
+    setInterval(refresh, 2000);
+    window.addEventListener("resize", () => refresh());
+  </script>
 </body>
 </html>
