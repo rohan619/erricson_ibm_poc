@@ -35,16 +35,19 @@ trap 'on_error $LINENO' ERR
 
 require_var CLOUD_DEPLOY_OUTPUT_GCS_PATH
 require_var CLOUD_DEPLOY_TARGET
-require_var IMAGE_REPO
-require_var IMAGE_DIGEST
 require_cmd gcloud
 require_cmd git
 require_cmd sed
 
-GITOPS_REPO="${GITOPS_REPO:-rohan619/erricson_ibm_app_repo}"
-GITOPS_BRANCH="${GITOPS_BRANCH:-main}"
-GITOPS_PAT_SECRET="${GITOPS_PAT_SECRET:-}"
-GITOPS_PAT="${GITOPS_PAT:-}"
+IMAGE_REPO="${CLOUD_DEPLOY_customTarget_IMAGE_REPO:-${IMAGE_REPO:-}}"
+IMAGE_DIGEST="${CLOUD_DEPLOY_customTarget_IMAGE_DIGEST:-${IMAGE_DIGEST:-}}"
+GITOPS_REPO="${CLOUD_DEPLOY_customTarget_GITOPS_REPO:-${GITOPS_REPO:-rohan619/erricson_ibm_app_repo}}"
+GITOPS_BRANCH="${CLOUD_DEPLOY_customTarget_GITOPS_BRANCH:-${GITOPS_BRANCH:-main}}"
+GITOPS_PAT_SECRET="${CLOUD_DEPLOY_customTarget_GITOPS_PAT_SECRET:-${GITOPS_PAT_SECRET:-}}"
+GITOPS_PAT="${CLOUD_DEPLOY_customTarget_GITOPS_PAT:-${GITOPS_PAT:-}}"
+
+require_var IMAGE_REPO
+require_var IMAGE_DIGEST
 
 if [[ -z "${GITOPS_PAT}" && -n "${GITOPS_PAT_SECRET}" ]]; then
   GITOPS_PAT="$(gcloud secrets versions access latest --secret="${GITOPS_PAT_SECRET}")"

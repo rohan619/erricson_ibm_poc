@@ -166,26 +166,52 @@ jobs:
             --skaffold-file="clouddeploy/skaffold.yaml" \
             --deploy-parameters="customTarget/IMAGE_REPO=$IMAGE_REPO,customTarget/IMAGE_DIGEST=${{ needs.build-image.outputs.image_digest }},customTarget/GITOPS_REPO=$GITOPS_REPO,customTarget/GITOPS_BRANCH=$GITOPS_BRANCH,customTarget/GITOPS_PAT=${{ secrets.GITOPS_PAT }}"
 
-      - name: Promote release to prod stage
+      - name: Wait for QA rollout result
         run: |
           ATTEMPTS=0
-          MAX_ATTEMPTS=30
-          until gcloud deploy releases promote \
-            --project="${{ secrets.GCP_PROJECT_ID }}" \
-            --region="$CLOUD_DEPLOY_REGION" \
-            --delivery-pipeline="$CLOUD_DEPLOY_PIPELINE" \
-            --release="$RELEASE_NAME" \
-            --quiet; do
-              ATTEMPTS=$((ATTEMPTS + 1))
-              if [[ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]]; then
-                echo "Timed out waiting to promote release $RELEASE_NAME to prod stage."
+          MAX_ATTEMPTS=45
+          while true; do
+            QA_ROLLOUT_PATH=$(gcloud deploy rollouts list \
+              --project="${{ secrets.GCP_PROJECT_ID }}" \
+              --region="$CLOUD_DEPLOY_REGION" \
+              --delivery-pipeline="$CLOUD_DEPLOY_PIPELINE" \
+              --release="$RELEASE_NAME" \
+              --filter='targetId="gitops-qa"' \
+              --sort-by='~createTime' \
+              --limit=1 \
+              --format='value(name)')
+
+            if [[ -n "$QA_ROLLOUT_PATH" ]]; then
+              QA_ROLLOUT="${QA_ROLLOUT_PATH##*/}"
+              QA_STATUS=$(gcloud deploy rollouts describe "$QA_ROLLOUT" \
+                --project="${{ secrets.GCP_PROJECT_ID }}" \
+                --region="$CLOUD_DEPLOY_REGION" \
+                --delivery-pipeline="$CLOUD_DEPLOY_PIPELINE" \
+                --release="$RELEASE_NAME" \
+                --format='value(state)')
+              echo "QA rollout state: $QA_STATUS"
+
+              if [[ "$QA_STATUS" == "SUCCEEDED" ]]; then
+                break
+              fi
+
+              if [[ "$QA_STATUS" == "FAILED" || "$QA_STATUS" == "CANCELLED" ]]; then
+                echo "QA rollout failed with state: $QA_STATUS"
                 exit 1
               fi
-              echo "QA rollout not ready for promotion yet. Retrying in 20s..."
-              sleep 20
-            done
+            fi
 
-      - name: Promotion note
+            ATTEMPTS=$((ATTEMPTS + 1))
+            if [[ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]]; then
+              echo "Timed out waiting for QA rollout to complete."
+              exit 1
+            fi
+            sleep 20
+          done
+
+      - name: Manual promotion note
         run: |
-          echo "Release $RELEASE_NAME promoted to prod target rollout."
-          echo "Prod target has requireApproval=true; approve rollout in Cloud Deploy to execute prod GitOps update."
+          echo "Release $RELEASE_NAME completed QA stage."
+          echo "Promote manually when ready:"
+          echo "gcloud deploy releases promote --project=${{ secrets.GCP_PROJECT_ID }} --region=$CLOUD_DEPLOY_REGION --delivery-pipeline=$CLOUD_DEPLOY_PIPELINE --release=$RELEASE_NAME"
+          echo "After promotion, approve the prod rollout in Cloud Deploy (requireApproval=true)."
