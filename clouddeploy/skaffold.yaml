@@ -10,25 +10,8 @@ customActions:
           - "-c"
           - |-
             set -euo pipefail
-            IMAGE_REPO="${CLOUD_DEPLOY_customTarget_IMAGE_REPO:-${IMAGE_REPO:-}}"
-            IMAGE_DIGEST="${CLOUD_DEPLOY_customTarget_IMAGE_DIGEST:-${IMAGE_DIGEST:-}}"
-            if [[ -z "${IMAGE_REPO}" || -z "${IMAGE_DIGEST}" ]]; then
-              cat > results.json <<RESULTS
-              {"resultStatus":"FAILED","failureMessage":"Missing IMAGE_REPO or IMAGE_DIGEST deploy parameters"}
-              RESULTS
-              gcloud storage cp results.json "${CLOUD_DEPLOY_OUTPUT_GCS_PATH}/results.json"
-              exit 1
-            fi
-            cat > rendered-manifest.yaml <<MANIFEST
-            release: ${CLOUD_DEPLOY_RELEASE}
-            target: ${CLOUD_DEPLOY_TARGET}
-            image: ${IMAGE_REPO}@${IMAGE_DIGEST}
-            MANIFEST
-            gcloud storage cp rendered-manifest.yaml "${CLOUD_DEPLOY_OUTPUT_GCS_PATH}/rendered-manifest.yaml"
-            cat > results.json <<RESULTS
-            {"resultStatus":"SUCCEEDED","manifestFile":"${CLOUD_DEPLOY_OUTPUT_GCS_PATH}/rendered-manifest.yaml"}
-            RESULTS
-            gcloud storage cp results.json "${CLOUD_DEPLOY_OUTPUT_GCS_PATH}/results.json"
+            chmod +x ./scripts/clouddeploy_gitops_render.sh
+            ./scripts/clouddeploy_gitops_render.sh
 
   - name: gitops-deploy
     containers:
